@@ -1,0 +1,7 @@
+node_modules/
+
+## .agents（技能统一目录，Claude Code / DSH 共用）
+.scratch/*
+!.scratch/README.md
+.agents/skills/**/workspace/
+.agents/scripts/logs/
