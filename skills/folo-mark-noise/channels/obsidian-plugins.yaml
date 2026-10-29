@@ -1,0 +1,11 @@
+feedId: "93966003665247232"
+title: "插件 - Obsidian"
+default: ban
+pick:
+  all:
+    - field: categories
+      equals: bases
+    - field: description
+      llm: 桌面游戏
+    - field: description
+      llm: 桌面游戏
