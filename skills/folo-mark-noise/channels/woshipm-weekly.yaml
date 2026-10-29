@@ -1,0 +1,12 @@
+feedId: "62029871009936384"
+title: "聚合 - 人人都是产品经理 - 周榜"
+default: pick
+except:
+  - field: title
+    desc: 各种标题党, 类似输输赢赢之类的内容
+  - field: description
+    desc: 营销文章, AI生成文章
+  - field: description
+    desc: 热点事件
+  - field: description
+    desc: 各种软广, 产品, 工具推荐等
