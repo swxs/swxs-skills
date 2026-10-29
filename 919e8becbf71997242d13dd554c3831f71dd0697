@@ -1,0 +1,20 @@
+skills/folo-mark-noise/channels/obsidian-plugins.yaml
+  h_ee4a963711c0f7 4,6,8,10-14
+skills/folo-mark-noise/SKILL.md
+  h_ee4a963711c0f7 32,36-37,46,48
+skills/folo-mark-noise/prompts/keep-yaml.md
+  h_ee4a963711c0f7 1,3,5,7,15,18
+skills/folo-mark-noise/prompts/judge.md
+  h_ee4a963711c0f7 3,5
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "919e8becbf71997242d13dd554c3831f71dd0697",
+  "prompts": {},
+  "humans": {
+    "h_ee4a963711c0f7": {
+      "author": "swxs"
+    }
+  }
+}
