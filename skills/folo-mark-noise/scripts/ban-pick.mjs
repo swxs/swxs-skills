@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const empty = "";
@@ -25,6 +25,89 @@ export function buildResult(feedId, title, entries, decisions) {
   return { feedId, title, entries: chosen };
 }
 
+export function choicesPath(feedId) {
+  return join(tmpdir(), "swxs-folo-ban-pick", String(feedId), "choices.yaml");
+}
+
+function yamlQuote(value) {
+  return `"${String(value ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/\t/g, "\\t")}"`;
+}
+
+function yamlUnquote(body) {
+  return body.replace(/\\(.)/g, (_, ch) => {
+    if (ch === "n") return "\n";
+    if (ch === "r") return "\r";
+    if (ch === "t") return "\t";
+    return ch;
+  });
+}
+
+export function readChoices(text) {
+  const decisions = {};
+  const order = [];
+  let current = null;
+  for (const line of String(text ?? "").split(/\n/)) {
+    const idLine = line.match(/^- id: (?:"((?:\\.|[^"\\])*)"|([^\s#]+))\s*$/);
+    if (idLine) {
+      current = yamlUnquote(idLine[1] != null ? idLine[1] : idLine[2]);
+      continue;
+    }
+    const decisionLine = line.match(/^  decision: (pick|ban)\s*$/);
+    if (!decisionLine || current == null) continue;
+    const existing = order.indexOf(current);
+    if (existing !== -1) order.splice(existing, 1);
+    order.push(current);
+    decisions[current] = decisionLine[1];
+    current = null;
+  }
+  return { decisions, order };
+}
+
+function choiceItem(id, decision) {
+  return `- id: ${yamlQuote(id)}\n  decision: ${decision}\n`;
+}
+
+function loadChoices(file) {
+  try {
+    return readChoices(readFileSync(file, "utf8"));
+  } catch (error) {
+    if (error && error.code === "ENOENT") return { decisions: {}, order: [] };
+    throw error;
+  }
+}
+
+function appendChoice(file, id, decision) {
+  mkdirSync(dirname(file), { recursive: true });
+  appendFileSync(file, choiceItem(id, decision));
+}
+
+function writeChoices(file, saved) {
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, saved.order.map((id) => choiceItem(id, saved.decisions[id])).join(""));
+}
+
+export function resultYaml(result) {
+  const lines = [`feedId: ${yamlQuote(result.feedId)}`, `title: ${yamlQuote(result.title)}`, "entries:"];
+  if (!result.entries.length) {
+    lines[2] = "entries: []";
+    return `${lines.join("\n")}\n`;
+  }
+  for (const entry of result.entries) {
+    lines.push(`  - id: ${yamlQuote(entry.id)}`);
+    lines.push(`    title: ${yamlQuote(entry.title)}`);
+    lines.push(`    description: ${yamlQuote(entry.description)}`);
+    if (!entry.categories?.length) lines.push("    categories: []");
+    else {
+      lines.push("    categories:");
+      for (const category of entry.categories) lines.push(`      - ${yamlQuote(category)}`);
+    }
+    lines.push(`    url: ${yamlQuote(entry.url)}`);
+    lines.push(`    author: ${yamlQuote(entry.author)}`);
+    lines.push(`    decision: ${entry.decision}`);
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 function fail(message) {
   if (message) console.error(message);
   const error = new Error(message || "stop");
@@ -32,8 +115,8 @@ function fail(message) {
   throw error;
 }
 
-function page(entries) {
-  const payload = JSON.stringify(entries).replace(/</g, "\\u003c");
+function page(entries, decisions) {
+  const payload = JSON.stringify({ entries, decisions: decisions || {} }).replace(/</g, "\\u003c");
   return `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -76,27 +159,41 @@ function page(entries) {
 <div class="dots" id="dots"></div>
 <script id="payload" type="application/json">${payload}</script>
 <script>
-const ENTRIES = JSON.parse(document.getElementById("payload").textContent);
-const state = { marks: {}, cursor: 0, done: false };
+const DATA = JSON.parse(document.getElementById("payload").textContent);
+const ENTRIES = DATA.entries;
+const state = { marks: { ...DATA.decisions }, cursor: 0, done: false, saving: false };
+const firstOpen = ENTRIES.findIndex((item) => state.marks[item.id] !== "pick" && state.marks[item.id] !== "ban");
+state.cursor = firstOpen === -1 ? 0 : firstOpen;
 function post(path, body) {
   return fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : "{}" });
 }
-setInterval(() => { if (!state.done) post("/ping"); }, 3000);
-post("/ping");
-function submit() {
-  if (state.done) return;
-  state.done = true;
-  post("/done", { decisions: state.marks }).then(() => render());
-}
 function choose(kind) {
-  if (state.done) return;
+  if (state.done || state.saving) return;
   const entry = ENTRIES[state.cursor];
-  state.marks[entry.id] = kind;
-  if (state.cursor === ENTRIES.length - 1) submit();
-  else { state.cursor += 1; render(); }
+  const index = state.cursor;
+  state.saving = true;
+  render();
+  post("/mark", { id: entry.id, decision: kind, finish: index === ENTRIES.length - 1 }).then((res) => {
+    if (!res.ok) throw new Error("mark");
+    return res.json();
+  }).then((body) => {
+    if (!body.ok) throw new Error("mark");
+    state.marks[entry.id] = kind;
+    state.saving = false;
+    if (body.done) {
+      state.done = true;
+      render();
+      return;
+    }
+    if (index < ENTRIES.length - 1) state.cursor = index + 1;
+    render();
+  }).catch(() => {
+    state.saving = false;
+    render();
+  });
 }
 function jump(index) {
-  if (state.done) return;
+  if (state.done || state.saving) return;
   state.cursor = index;
   render();
 }
@@ -104,7 +201,7 @@ function slab(kind, zh, en) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "slab " + kind;
-  button.disabled = state.done;
+  button.disabled = state.done || state.saving;
   const strong = document.createElement("strong");
   strong.textContent = zh;
   const small = document.createElement("small");
@@ -212,85 +309,99 @@ async function loadUnread(feedId) {
   };
 }
 
+function readJson(req) {
+  return new Promise((resolveBody, reject) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      const text = Buffer.concat(chunks).toString("utf8");
+      if (!text) {
+        resolveBody({});
+        return;
+      }
+      try {
+        resolveBody(JSON.parse(text));
+      } catch (error) {
+        reject(error);
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
 export function serveBanPick(feedId, title, entries, options = {}) {
   let finished = false;
-  let lastPing = 0;
-  const html = page(entries);
+  const choicesFile = options.choicesFile || choicesPath(feedId);
+  const html = page(entries, options.decisions || {});
   let resolveUrl = () => {};
   const opened = new Promise((resolve) => {
     resolveUrl = resolve;
   });
   const server = createServer((req, res) => {
-    if (req.method === "GET" && (req.url === "/" || req.url.startsWith("/?"))) {
-      lastPing = Date.now();
-      res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      res.end(html);
-      return;
-    }
-    if (req.method === "POST" && req.url === "/ping") {
-      lastPing = Date.now();
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-    if (req.method === "POST" && req.url === "/done") {
-      const chunks = [];
-      req.on("data", (chunk) => chunks.push(chunk));
-      req.on("end", () => {
-        let body = {};
-        try {
-          body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
-        } catch {
-          res.writeHead(400);
-          res.end();
-          return;
-        }
-        const result = buildResult(feedId, title, entries, body.decisions || {});
-        const output = JSON.stringify(result, null, 2) + "\n";
+    readJson(req).then((body) => {
+      if (req.method === "GET" && (req.url === "/" || req.url.startsWith("/?"))) {
+        res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
+        res.end(html);
+        return;
+      }
+      if (req.method !== "POST" || req.url !== "/mark") {
+        res.writeHead(404);
+        res.end();
+        return;
+      }
+      const id = String(body.id || "");
+      const decision = body.decision;
+      if (!entries.some((entry) => entry.id === id) || (decision !== "pick" && decision !== "ban")) {
+        res.writeHead(400);
+        res.end();
+        return;
+      }
+      appendChoice(choicesFile, id, decision);
+      const finish = body.finish === true;
+      if (!finish) {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end("{}", () => {
-          if (finished) return;
-          finished = true;
-          clearInterval(timer);
-          process.stdout.write(output, () => {
-            process.exitCode = 0;
-            server.close();
-          });
-        });
+        res.end(JSON.stringify({ ok: true, done: false }));
+        return;
+      }
+      if (finished) return;
+      finished = true;
+      const saved = loadChoices(choicesFile);
+      writeChoices(choicesFile, saved);
+      const output = resultYaml(buildResult(feedId, title, entries, saved.decisions));
+      res.writeHead(200, { "content-type": "application/json", connection: "close" });
+      res.end(JSON.stringify({ ok: true, done: true }), () => {
+        process.stdout.write(output, () => process.exit(0));
       });
-      return;
-    }
-    res.writeHead(404);
-    res.end();
+    }).catch(() => {
+      if (res.headersSent) return;
+      res.writeHead(400);
+      res.end();
+    });
   });
   server.listen(0, "127.0.0.1", () => {
     const { port } = server.address();
     const url = `http://127.0.0.1:${port}/`;
     console.error(`open ${url} entries ${entries.length}`);
-    lastPing = Date.now();
     resolveUrl(url);
     if (options.open !== false) {
       spawn("cmd", ["/c", "start", "", url], { detached: true, stdio: "ignore", windowsHide: true }).unref();
     }
   });
-  const timer = setInterval(() => {
-    if (finished || !lastPing) return;
-    if (Date.now() - lastPing > 20000) {
-      clearInterval(timer);
-      process.exitCode = 1;
-      server.close();
-    }
-  }, 2000);
   const stop = () => {
     if (finished) return;
     finished = true;
-    clearInterval(timer);
-    process.exitCode = 1;
     server.close();
+    process.exit(1);
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
   return opened;
+}
+
+function emitSaved(feedId, title, entries, choicesFile, saved) {
+  writeChoices(choicesFile, saved);
+  const output = resultYaml(buildResult(feedId, title, entries, saved.decisions));
+  process.stdout.write(output, () => process.exit(0));
 }
 
 async function main() {
@@ -310,7 +421,14 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  serveBanPick(feedId, loaded.title, loaded.entries);
+  const choicesFile = choicesPath(feedId);
+  const saved = loadChoices(choicesFile);
+  const last = loaded.entries[loaded.entries.length - 1];
+  if (saved.decisions[last.id] === "pick" || saved.decisions[last.id] === "ban") {
+    emitSaved(feedId, loaded.title, loaded.entries, choicesFile, saved);
+    return;
+  }
+  serveBanPick(feedId, loaded.title, loaded.entries, { choicesFile, decisions: saved.decisions });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

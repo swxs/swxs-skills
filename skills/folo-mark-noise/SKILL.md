@@ -25,29 +25,30 @@ description: 按频道 YAML 清理 Folo 未读。先按 folo-cli 确认 whoami�
 node scripts/ban-pick.mjs <feedId>
 ```
 
-脚本打开对开页面并停住。等待用户选择倾向后生成标准输出JSON，退出码为 0。JSON 里有 `feedId`、`title`、`entries`。`entries` 只有点过的条目，每条有 `decision`：`pick` 或 `ban`。
+脚本打开对开页面并停住。每一次选择追加到系统临时目录 `swxs-folo-ban-pick/<feedId>/choices.yaml`。同一个 id 以最后一条为准。提交成功后按 id 收成一份列表，并把 YAML 写到标准输出，退出码为 0。YAML 里有 `feedId`、`title`、`entries`。`entries` 只有点过的条目，每条有 `decision`：`pick` 或 `ban`。再次运行时按 `choices.yaml` 恢复已选条目。
 
-完成：退出码为 0，且标准输出能解析成这份 JSON。退出码不是 0 时标准输出为空，停，不要启动子代理。
+完成：退出码为 0，且标准输出能解析成这份 YAML。退出码不是 0 时标准输出为空，停，不要启动子代理。
 
-3. 用步骤 2 的 JSON 算 `default`：`ban` 的比例大于等于 75% 则为 `ban`，否则为 `pick`。读 [prompts/keep-yaml.md](prompts/keep-yaml.md)。新开一个子代理，模型沿用当前这个，不带这段对话。提示只有该文件的全文，加一行 `default: ban` 或 `default: pick`，再加上这份 JSON。
+3. 用步骤 2 的 YAML 算 `default`：`ban` 的比例大于等于 75% 则为 `ban`，否则为 `pick`。读 [prompts/keep-yaml.md](prompts/keep-yaml.md)。新开一个子代理，模型沿用当前这个，不带这段对话。提示只有该文件的全文，加一行 `用户选择 default: ban` 或 `用户选择 default: pick`，再加上这份 YAML。
 
 完成：子代理返回一段文字。
 
-4. 这段文字里要有给定的 `default`，以及对应的例外：`default` 为 `ban` 时是 `pick`，为 `pick` 时是 `ban`。把理由和 YAML 给用户。用户接受后，把 JSON 里的 `feedId`、`title` 和这段 YAML 写入 `channels/<slug>.yaml`。slug 用小写英文短横线。对不上这个形状，就把整段给用户，停，不要再叫一次子代理。
+4. 这段文字里要有给定的 `default` 和 `except`。`default` 只能是 `ban` 或 `pick`。`except` 是列表。每一项只有 `field` 和 `desc`。`field` 只能是 `categories`、`title`、`description`、`url`、`author`。`desc` 是一句短描述，只根据这一个字段判断。列表里任意一项命中，结果就与 `default` 相反：`default` 为 `ban` 时，命中的留下，没命中的清掉；`default` 为 `pick` 时，命中的清掉，没命中的留下。
+
+把理由和 YAML 给用户。用户接受后，把标准输出里的 `feedId`、`title` 和子代理给出的规则写入 `channels/<slug>.yaml`。slug 用小写英文短横线。对不上这个形状，就把整段给用户，停，不要再叫一次子代理。
 
 ```yaml
 feedId: "<id>"
 title: "<订阅标题>"
 default: ban
-pick:
-  any:
-    - field: description
-      llm: 会议录音或实时转写
+except:
+  - field: categories
+    desc: 包含 bases
+  - field: description
+    desc: 会议录音或实时转写
 ```
 
-`default` 为 `ban` 时，没命中 `pick` 的条目清掉，命中的留下。`default` 为 `pick` 时，没命中 `ban` 的条目留下，命中的清掉。例外下面只能有 `all` 或 `any` 一个，两者可以嵌套。每一条都有 `field`，再加 `equals`、`contains`、`llm` 里的一个。
-
-完成：用户接受，且文件里有 `feedId`、`title`、`default`，以及 `pick` 或 `ban`。或者用户看到了理由，且没有新文件。
+完成：用户接受，且文件同时满足这四条：有 `feedId` 和 `title`；`default` 是 `ban` 或 `pick`；`except` 是列表；每一项都是 `field` 加 `desc`，且 `field` 是上面五个之一。或者用户看到了理由，且没有新文件。
 
 ## 清理
 

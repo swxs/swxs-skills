@@ -1,11 +1,14 @@
 feedId: "93966003665247232"
 title: "插件 - Obsidian"
 default: ban
-pick:
-  all:
-    - field: categories
-      equals: bases
-    - field: description
-      llm: 桌面游戏
-    - field: description
-      llm: 桌面游戏
+except:
+  - field: categories
+    desc: 包含`bases`
+  - field: description
+    desc: 涉及桌面游戏
+  - field: description
+    desc: 涉及`mermaid`
+  - field: description
+    desc: 涉及会议记录的保存留档
+  - field: description
+    desc: 涉及从专业信息网站刮削数据
