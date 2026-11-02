@@ -9,6 +9,7 @@ skills/
 ├── fill-tapd-timesheet/    填写工时
 ├── folo-cli/               用 folocli 调 Folo
 ├── folo-mark-noise/        按频道规范标记低价值 RSS
+├── generator-docs/         按文档类型写技术文档
 ├── wraped-archify/         封装archify技能
 └── query-work-1/           查询众言工作记录
 ```
