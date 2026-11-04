@@ -1,0 +1,18 @@
+skills/tapd/SKILL.md
+  h_ee4a963711c0f7 1-94
+skills/tapd-fill-timesheet/SKILL.md
+  h_ee4a963711c0f7 1-80
+skills/tapd/reference/api_reference.md
+  h_ee4a963711c0f7 1-146
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.3.0",
+  "base_commit_sha": "420b9f194d7638db78c4edaa5c05c780520287f7",
+  "prompts": {},
+  "humans": {
+    "h_ee4a963711c0f7": {
+      "author": "swxs"
+    }
+  }
+}
