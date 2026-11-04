@@ -6,7 +6,8 @@
 
 ```
 skills/
-├── fill-tapd-timesheet/    填写工时
+├── tapd-fill-timesheet/    填写工时
+├── tapd/                   TAPD 开放 API
 ├── folo-cli/               用 folocli 调 Folo
 ├── folo-mark-noise/        按频道规范标记低价值 RSS
 ├── generator-docs/         按文档类型写技术文档
