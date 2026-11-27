@@ -1,6 +1,6 @@
 ---
 name: generator-docs
-description: 按文档类型写技术文档，先分类再按该类写法落文件。用户要求写技术文档时使用。
+description: 按文档类型写技术文档，先分类再按该类写法落文件。文档以「开发-」或「需求-」开头，或要写临时脚本时使用。
 ---
 
 # 技术文档
@@ -10,6 +10,7 @@ description: 按文档类型写技术文档，先分类再按该类写法落文�
 | 类型             | 何时选                                                       | 读                                                                                             |
 | ---------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
 | 开发类型技术文档 | 要写的文档以「开发-」开头                                    | [guide.md](reference/task-dev/guide.md)、[templates.md](reference/task-dev/templates.md)       |
+| 需求文档         | 要写的文档以「需求-」开头                                    | [guide.md](reference/requirement/guide.md)、[templates.md](reference/requirement/templates.md) |
 | 临时脚本         | 要写临时脚本，或要把一次性 Python 操作写成按顺序执行的代码块 | [guide.md](reference/temp-script/guide.md)、[templates.md](reference/temp-script/templates.md) |
 
 先对上表。一份文档对不上任何一类，或同时像两类：先问，得到答案再写。
